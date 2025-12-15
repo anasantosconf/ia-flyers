@@ -2,38 +2,53 @@ import { NextResponse } from "next/server";
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const prompt = body.prompt;
+    const { prompt } = await req.json();
 
     if (!prompt) {
       return NextResponse.json(
-        { error: "Prompt da imagem não informado" },
+        { error: "Prompt ausente" },
         { status: 400 }
       );
     }
 
-    const response = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-image-1",
-        prompt: prompt,
-        size: "1080x1350"
-      })
-    });
+    const openaiResponse = await fetch(
+      "https://api.openai.com/v1/images/generations",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-image-1",
+          prompt,
+          size: "1024x1024"
+        })
+      }
+    );
 
-    const data = await response.json();
+    const result = await openaiResponse.json();
+
+    if (!openaiResponse.ok) {
+      return NextResponse.json(
+        {
+          error: "Erro da OpenAI",
+          details: result
+        },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
-      image_url: data.data[0].url
+      image_url: result.data?.[0]?.url
     });
 
-  } catch (error) {
+  } catch (err) {
     return NextResponse.json(
-      { error: error.message },
+      {
+        error: "Erro interno",
+        details: err.message
+      },
       { status: 500 }
     );
   }
