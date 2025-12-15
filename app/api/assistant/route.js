@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 
-let lastTask = null;
-
 export async function POST(req) {
-  const { command, action } = await req.json();
+  const { command, action, task } = await req.json();
 
   // 1️⃣ Novo comando
   if (command) {
     if (command.toLowerCase().includes("flyer")) {
-      lastTask = {
+      const newTask = {
         type: "flyer",
         image_prompt: `
 Professional flyer design,
@@ -21,17 +19,17 @@ premium marketing aesthetic
 
       return NextResponse.json({
         step: "approval",
-        task: lastTask,
+        task: newTask,
         message: "Gerei o conceito do flyer. Posso prosseguir?"
       });
     }
   }
 
-  // 2️⃣ Aprovação
-  if (action === "approve" && lastTask) {
+  // 2️⃣ Aprovação COM CONTEXTO
+  if (action === "approve" && task) {
     return NextResponse.json({
       step: "approved",
-      task: lastTask,
+      task,
       message: "Aprovado. O que deseja fazer agora?",
       options: [
         "Salvar na pasta flyers",
@@ -41,7 +39,6 @@ premium marketing aesthetic
     });
   }
 
-  // 3️⃣ Fallback
   return NextResponse.json({
     message: "Não entendi o pedido"
   });
