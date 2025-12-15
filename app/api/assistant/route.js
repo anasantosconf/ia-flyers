@@ -1,51 +1,48 @@
 import { NextResponse } from "next/server";
 
+let lastTask = null;
+
 export async function POST(req) {
-  const { command } = await req.json();
+  const { command, action } = await req.json();
 
-  if (!command) {
-    return NextResponse.json(
-      { error: "Comando não enviado" },
-      { status: 400 }
-    );
-  }
-
-  // Simulação inteligente (sem IA paga)
-  let response = {
-    type: "unknown",
-    message: "Não entendi o pedido"
-  };
-
-  if (command.toLowerCase().includes("flyer")) {
-    response = {
-      type: "flyer",
-      image_prompt: `
+  // 1️⃣ Novo comando
+  if (command) {
+    if (command.toLowerCase().includes("flyer")) {
+      lastTask = {
+        type: "flyer",
+        image_prompt: `
 Professional flyer design,
 dark gradient overlay,
 cinematic lighting,
 modern typography,
-high contrast,
-premium marketing aesthetic,
-clear visual hierarchy
-      `.trim(),
-      approval_question: "Posso gerar esse flyer?"
-    };
+premium marketing aesthetic
+        `.trim()
+      };
+
+      return NextResponse.json({
+        step: "approval",
+        task: lastTask,
+        message: "Gerei o conceito do flyer. Posso prosseguir?"
+      });
+    }
   }
 
-  if (command.toLowerCase().includes("vídeo")) {
-    response = {
-      type: "video",
-      video_prompt: `
-Cinematic promotional video,
-smooth transitions,
-corporate mood,
-soft lighting,
-professional color grading,
-subtle motion graphics
-      `.trim(),
-      approval_question: "Posso montar esse vídeo?"
-    };
+  // 2️⃣ Aprovação
+  if (action === "approve" && lastTask) {
+    return NextResponse.json({
+      step: "approved",
+      task: lastTask,
+      message: "Aprovado. O que deseja fazer agora?",
+      options: [
+        "Salvar na pasta flyers",
+        "Enviar para alguém",
+        "Postar automaticamente"
+      ]
+    });
   }
 
-  return NextResponse.json(response);
+  // 3️⃣ Fallback
+  return NextResponse.json({
+    message: "Não entendi o pedido"
+  });
 }
