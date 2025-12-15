@@ -11,7 +11,7 @@ export async function POST(req) {
       );
     }
 
-    const openaiResponse = await fetch(
+    const response = await fetch(
       "https://api.openai.com/v1/images/generations",
       {
         method: "POST",
@@ -27,21 +27,40 @@ export async function POST(req) {
       }
     );
 
-    const result = await openaiResponse.json();
+    const result = await response.json();
 
-    if (!openaiResponse.ok) {
+    // 👉 Se a OpenAI devolver erro explícito
+    if (!response.ok) {
       return NextResponse.json(
-        {
-          error: "Erro da OpenAI",
-          details: result
-        },
+        { error: "Erro da OpenAI", details: result },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
-      image_url: result.data?.[0]?.url
-    });
+    // 👉 Caso venha URL
+    if (result.data && result.data[0]?.url) {
+      return NextResponse.json({
+        type: "url",
+        image: result.data[0].url
+      });
+    }
+
+    // 👉 Caso venha base64
+    if (result.data && result.data[0]?.b64_json) {
+      return NextResponse.json({
+        type: "base64",
+        image: result.data[0].b64_json
+      });
+    }
+
+    // 👉 Caso inesperado
+    return NextResponse.json(
+      {
+        error: "Formato de resposta inesperado",
+        raw: result
+      },
+      { status: 500 }
+    );
 
   } catch (err) {
     return NextResponse.json(
