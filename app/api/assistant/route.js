@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 
 export async function POST(req) {
-  const { command, action, task } = await req.json();
+  const { command, action, task, choice } = await req.json();
 
-  // 1️⃣ Novo comando
+  // Novo comando
   if (command) {
     if (command.toLowerCase().includes("flyer")) {
       const newTask = {
@@ -25,7 +27,7 @@ premium marketing aesthetic
     }
   }
 
-  // 2️⃣ Aprovação COM CONTEXTO
+  // Aprovação
   if (action === "approve" && task) {
     return NextResponse.json({
       step: "approved",
@@ -39,7 +41,25 @@ premium marketing aesthetic
     });
   }
 
-  return NextResponse.json({
-    message: "Não entendi o pedido"
-  });
+  // Escolha
+  if (choice === "save" && task) {
+    const folder = path.join(process.cwd(), "data", "flyers");
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+    }
+
+    const filename = `flyer-${Date.now()}.json`;
+    fs.writeFileSync(
+      path.join(folder, filename),
+      JSON.stringify(task, null, 2)
+    );
+
+    return NextResponse.json({
+      step: "saved",
+      message: "Flyer salvo com sucesso!",
+      file: filename
+    });
+  }
+
+  return NextResponse.json({ message: "Não entendi o pedido" });
 }
