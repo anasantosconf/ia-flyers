@@ -102,13 +102,13 @@ Data: ${new Date().toISOString()}
       }),
       { headers: { "Content-Type": "application/json" } }
     );
-  } catch (err) {
-    return new Response(
-      JSON.stringify({
-        error: "Erro ao salvar no Drive",
-        details: err.message
-      }),
-      { status: 500 }
-    );
-  }
+} catch (err) {
+  return new Response(
+    JSON.stringify({
+      error: "Erro ao salvar no Drive",
+      message: err.message,
+      stack: err.stack
+    }),
+    { status: 500 }
+  );
 }
