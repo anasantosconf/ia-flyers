@@ -1,114 +1,84 @@
+// Força Node runtime, evita erro de build Turbopack
 export const runtime = "nodejs";
-import crypto from "crypto";
 
-function base64url(input) {
-  return Buffer.from(input)
-    .toString("base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-}
-
-async function getAccessToken() {
-  const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-
-  const now = Math.floor(Date.now() / 1000);
-
-  const header = {
-    alg: "RS256",
-    typ: "JWT"
-  };
-
-  const payload = {
-    iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/drive.file",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now
-  };
-
-  const unsignedToken =
-    base64url(JSON.stringify(header)) +
-    "." +
-    base64url(JSON.stringify(payload));
-
-  const sign = crypto.createSign("RSA-SHA256");
-  sign.update(unsignedToken);
-  sign.end();
-
-  const signature = sign.sign(serviceAccount.private_key);
-  const jwt = unsignedToken + "." + base64url(signature);
-
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt
-    })
-  });
-
-  const data = await res.json();
-  return data.access_token;
-}
-
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const body = await req.json();
-    const token = await getAccessToken();
+    // 1️⃣ Ler body
+    const body = await request.json();
+    const { fileName, contentBase64 } = body;
 
-    const content = `
-Tipo: ${body.type}
-Status: ${body.status}
-Prompt:
-${body.image_prompt}
-Data: ${new Date().toISOString()}
-`;
+    if (!fileName || !contentBase64) {
+      return new Response(
+        JSON.stringify({
+          error: "Parâmetros obrigatórios ausentes",
+          expected: ["fileName", "contentBase64"]
+        }),
+        { status: 400 }
+      );
+    }
 
-    const upload = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
-        body: new FormData([
-          [
-            "metadata",
-            new Blob(
-              [
-                JSON.stringify({
-                  name: `flyer-${Date.now()}.txt`,
-                  parents: [process.env.GOOGLE_DRIVE_FOLDER_ID]
-                })
-              ],
-              { type: "application/json" }
-            )
-          ],
-          [
-            "file",
-            new Blob([content], { type: "text/plain" })
-          ]
-        ])
-      }
+    // 2️⃣ Verifica variável de ambiente
+    const rawCreds = process.env.GOOGLE_SERVICE_ACCOUNT;
+
+    if (!rawCreds) {
+      return new Response(
+        JSON.stringify({
+          error: "GOOGLE_SERVICE_ACCOUNT não configurado no Vercel"
+        }),
+        { status: 500 }
+      );
+    }
+
+    // 3️⃣ Parse seguro do JSON
+    let credentials;
+    try {
+      credentials = JSON.parse(rawCreds);
+    } catch (e) {
+      return new Response(
+        JSON.stringify({
+          error: "GOOGLE_SERVICE_ACCOUNT não é JSON válido"
+        }),
+        { status: 500 }
+      );
+    }
+
+    // 4️⃣ Import dinâmico do googleapis
+    const { google } = await import("googleapis");
+
+    // 5️⃣ Autenticação
+    const auth = new google.auth.JWT(
+      credentials.client_email,
+      null,
+      credentials.private_key,
+      ["https://www.googleapis.com/auth/drive.file"]
     );
 
-    const result = await upload.json();
+    const drive = google.drive({ version: "v3", auth });
+
+    // 6️⃣ Converter base64 para Buffer
+    const buffer = Buffer.from(contentBase64, "base64");
+
+    // 7️⃣ Upload
+    const uploadResponse = await drive.files.create({
+      requestBody: { name: fileName },
+      media: { mimeType: "image/png", body: buffer }
+    });
 
     return new Response(
       JSON.stringify({
-        step: "saved",
-        fileId: result.id
+        success: true,
+        fileId: uploadResponse.data.id
       }),
       { headers: { "Content-Type": "application/json" } }
     );
-} catch (err) {
-  return new Response(
-    JSON.stringify({
-      error: "Erro ao salvar no Drive",
-      message: err.message,
-      stack: err.stack
-    }),
-    { status: 500 }
-  );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({
+        error: "Erro inesperado ao salvar no Drive",
+        message: err?.message || "Erro desconhecido",
+        stack: err?.stack
+      }),
+      { status: 500 }
+    );
+  }
 }
