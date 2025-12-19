@@ -2,16 +2,12 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { google } from "googleapis";
 
-// =======================
 // Configuração OpenAI
-// =======================
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// =======================
 // Configuração Google Drive
-// =======================
 const auth = new google.auth.GoogleAuth({
   credentials: {
     type: process.env.GOOGLE_TYPE,
@@ -29,14 +25,10 @@ const auth = new google.auth.GoogleAuth({
 });
 const drive = google.drive({ version: "v3", auth });
 
-// =======================
 // Histórico em memória
-// =======================
 let conversationHistory = {};
 
-// =======================
 // Função para salvar no Drive
-// =======================
 async function saveToDrive(fileName, content) {
   const fileMetadata = {
     name: fileName,
@@ -56,9 +48,7 @@ async function saveToDrive(fileName, content) {
   return file.data.id;
 }
 
-// =======================
-// Endpoint
-// =======================
+// Endpoint POST
 export async function POST(req) {
   try {
     const { userId, message } = await req.json();
@@ -69,25 +59,18 @@ export async function POST(req) {
       );
     }
 
-    // Inicializa histórico se não existir
     if (!conversationHistory[userId]) conversationHistory[userId] = [];
-
-    // Adiciona mensagem do usuário ao histórico
     conversationHistory[userId].push({ role: "user", content: message });
 
-    // Verifica se a mensagem é "approved"
+    // Aprovação do flyer
     if (message.toLowerCase() === "approved") {
-      // Busca a última tarefa do assistente
       const lastTask = conversationHistory[userId]
-        .slice()  // copia o array para não modificar
+        .slice()
         .reverse()
         .find(m => m.role === "assistant" && m.content.task && m.content.task.image_prompt);
 
       if (lastTask) {
-        // Aqui você chamaria a OpenAI/Gemini para gerar a imagem
         const imageUrl = "https://via.placeholder.com/1024x1024.png?text=Imagem+Gerada"; // placeholder
-
-        // Salvar no Drive
         const fileId = await saveToDrive(
           `flyer-${Date.now()}.txt`,
           lastTask.content.task.image_prompt
@@ -110,7 +93,7 @@ export async function POST(req) {
       }
     }
 
-    // Se não é aprovação, gera conceito do flyer
+    // Se não for aprovação, gera conceito do flyer
     const assistantResponse = {
       step: "approval",
       task: {
