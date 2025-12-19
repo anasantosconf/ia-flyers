@@ -30,7 +30,7 @@ const auth = new google.auth.GoogleAuth({
 const drive = google.drive({ version: "v3", auth });
 
 // =======================
-// Histórico em memória (substituir por DB real)
+// Histórico em memória
 // =======================
 let conversationHistory = {};
 
@@ -72,19 +72,26 @@ export async function POST(req) {
     // Inicializa histórico se não existir
     if (!conversationHistory[userId]) conversationHistory[userId] = [];
 
-    // Adiciona mensagem do usuário
+    // Adiciona mensagem do usuário ao histórico
     conversationHistory[userId].push({ role: "user", content: message });
 
-    // Se o usuário respondeu "approved", gera a imagem e salva no Drive
+    // Verifica se a mensagem é "approved"
     if (message.toLowerCase() === "approved") {
-      const lastTask = conversationHistory[userId].reverse().find(m => m.role === "assistant");
-      if (lastTask && lastTask.content.task && lastTask.content.task.image_prompt) {
-        // Aqui você chamaria a OpenAI para gerar a imagem (simulado)
-        // const imageUrl = await openai.images.generate({ prompt: lastTask.content.task.image_prompt, size: "1024x1024" });
+      // Busca a última tarefa do assistente
+      const lastTask = conversationHistory[userId]
+        .slice()  // copia o array para não modificar
+        .reverse()
+        .find(m => m.role === "assistant" && m.content.task && m.content.task.image_prompt);
+
+      if (lastTask) {
+        // Aqui você chamaria a OpenAI/Gemini para gerar a imagem
         const imageUrl = "https://via.placeholder.com/1024x1024.png?text=Imagem+Gerada"; // placeholder
 
         // Salvar no Drive
-        const fileId = await saveToDrive("flyer.txt", lastTask.content.task.image_prompt);
+        const fileId = await saveToDrive(
+          `flyer-${Date.now()}.txt`,
+          lastTask.content.task.image_prompt
+        );
 
         const response = {
           step: "completed",
@@ -93,13 +100,17 @@ export async function POST(req) {
           fileId
         };
 
-        // Adiciona no histórico
         conversationHistory[userId].push({ role: "assistant", content: response });
         return NextResponse.json(response);
+      } else {
+        return NextResponse.json(
+          { error: "Nenhuma tarefa anterior encontrada para gerar a imagem" },
+          { status: 400 }
+        );
       }
     }
 
-    // Se não é aprovação, gerar conceito do flyer
+    // Se não é aprovação, gera conceito do flyer
     const assistantResponse = {
       step: "approval",
       task: {
@@ -112,6 +123,7 @@ export async function POST(req) {
 
     conversationHistory[userId].push({ role: "assistant", content: assistantResponse });
     return NextResponse.json(assistantResponse);
+
   } catch (err) {
     return NextResponse.json(
       { error: "Erro no assistente", message: err.message },
