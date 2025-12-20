@@ -1,49 +1,49 @@
 import OpenAI from "openai";
+import { NextResponse } from "next/server";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 export async function POST(req) {
   try {
-    // ⚠️ Inicializa AQUI, não fora
-    if (!process.env.OPENAI_API_KEY) {
-      return Response.json(
-        { error: "OPENAI_API_KEY não configurada" },
-        { status: 500 }
-      );
-    }
-
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
-
     const body = await req.json();
-    const { message } = body;
+    const userMessage = body.message;
 
-    if (!message) {
-      return Response.json(
-        { message: "Mensagem ausente" },
-        { status: 400 }
-      );
+    if (!userMessage) {
+      return NextResponse.json({
+        error: "Mensagem não enviada"
+      }, { status: 400 });
     }
 
-    // Exemplo simples de uso
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "Você é um assistente pessoal." },
-        { role: "user", content: message }
+        {
+          role: "system",
+          content: `
+Você é um assistente pessoal inteligente.
+Converse de forma natural, em português.
+Ajude o usuário a se organizar, responder dúvidas
+e orientar tarefas do dia a dia.
+`
+        },
+        {
+          role: "user",
+          content: userMessage
+        }
       ]
     });
 
-    return Response.json({
+    return NextResponse.json({
       reply: completion.choices[0].message.content
     });
 
-  } catch (err) {
-    return Response.json(
-      {
-        error: "Erro no assistant",
-        details: err.message
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({
+      error: "Erro no assistente",
+      details: error.message
+    }, { status: 500 });
   }
 }
