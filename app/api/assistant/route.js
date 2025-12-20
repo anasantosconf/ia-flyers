@@ -1,65 +1,105 @@
-import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// memória simples (por enquanto)
+const sessions = new Map();
 
 export async function POST(req) {
-  const { command, action, task, choice } = await req.json();
+  try {
+    const body = await req.json();
+    const { userId, message } = body;
 
-  // Novo comando
-  if (command) {
-    if (command.toLowerCase().includes("flyer")) {
-      const newTask = {
-        type: "flyer",
-        image_prompt: `
-Professional flyer design,
-dark gradient overlay,
-cinematic lighting,
-modern typography,
-premium marketing aesthetic
-        `.trim()
-      };
-
-      return NextResponse.json({
-        step: "approval",
-        task: newTask,
-        message: "Gerei o conceito do flyer. Posso prosseguir?"
-      });
+    if (!userId || !message) {
+      return new Response(
+        JSON.stringify({ error: "userId e message são obrigatórios" }),
+        { status: 400 }
+      );
     }
-  }
 
-  // Aprovação
-  if (action === "approve" && task) {
-    return NextResponse.json({
-      step: "approved",
-      task,
-      message: "Aprovado. O que deseja fazer agora?",
-      options: [
-        "Salvar na pasta flyers",
-        "Enviar para alguém",
-        "Postar automaticamente"
+    const session = sessions.get(userId) || {
+      step: "conversation",
+      task: null
+    };
+
+    // Se o usuário aprovou
+    if (message.toLowerCase() === "approved" && session.task) {
+      session.step = "approved";
+      sessions.set(userId, session);
+
+      return new Response(
+        JSON.stringify({
+          step: "approved",
+          task: session.task,
+          message: "Perfeito! Tarefa aprovada. Posso continuar."
+        }),
+        { status: 200 }
+      );
+    }
+
+    // IA interpreta a intenção
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+Você é um assistente pessoal.
+Identifique se o usuário quer criar algo (flyer, post, tarefa)
+ou apenas conversar.
+Responda de forma objetiva.
+          `
+        },
+        {
+          role: "user",
+          content: message
+        }
       ]
     });
-  }
 
-  // Escolha
-  if (choice === "save" && task) {
-    const folder = path.join(process.cwd(), "data", "flyers");
-    if (!fs.existsSync(folder)) {
-      fs.mkdirSync(folder, { recursive: true });
+    const aiText = completion.choices[0].message.content;
+
+    // Exemplo simples: detectar flyer
+    if (aiText.toLowerCase().includes("flyer")) {
+      session.step = "approval";
+      session.task = {
+        type: "flyer",
+        image_prompt:
+          "Professional flyer design, dark gradient overlay, cinematic lighting, modern typography, premium marketing aesthetic"
+      };
+
+      sessions.set(userId, session);
+
+      return new Response(
+        JSON.stringify({
+          step: "approval",
+          task: session.task,
+          message: "Gerei o conceito do flyer. Posso prosseguir?"
+        }),
+        { status: 200 }
+      );
     }
 
-    const filename = `flyer-${Date.now()}.json`;
-    fs.writeFileSync(
-      path.join(folder, filename),
-      JSON.stringify(task, null, 2)
+    // Conversa normal
+    sessions.set(userId, session);
+
+    return new Response(
+      JSON.stringify({
+        step: "conversation",
+        message: aiText
+      }),
+      { status: 200 }
     );
 
-    return NextResponse.json({
-      step: "saved",
-      message: "Flyer salvo com sucesso!",
-      file: filename
-    });
+  } catch (err) {
+    return new Response(
+      JSON.stringify({
+        error: "Erro no assistente",
+        message: err.message
+      }),
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ message: "Não entendi o pedido" });
 }
