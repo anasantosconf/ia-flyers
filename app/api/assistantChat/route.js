@@ -1,59 +1,87 @@
-import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
-const sessions = new Map();
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 export async function POST(req) {
   try {
-    const { userId, message } = await req.json();
+    const body = await req.json();
+    const { userId, message, context } = body;
 
-    if (!userId || !message) {
-      return NextResponse.json(
-        { error: "userId e message são obrigatórios" },
+    if (!message) {
+      return new Response(
+        JSON.stringify({ error: "Mensagem ausente" }),
         { status: 400 }
       );
     }
 
-    const session = sessions.get(userId) || {
-      step: "conversation",
-      task: null
-    };
+    const systemPrompt = `
+Você é um assistente pessoal inteligente, conversacional e proativo.
+Você entende linguagem natural em português informal.
+Seu trabalho é identificar a INTENÇÃO do usuário e decidir o próximo passo.
 
-    // APROVAÇÃO
-    if (session.step === "approval" && message.toLowerCase() === "approved") {
-      session.step = "done";
-      sessions.set(userId, session);
+Regras:
+- Se o usuário disser "sim", "ok", "pode", "aprovado" → intenção = approve
+- Se pedir criação → intenção = create
+- Se estiver confuso → peça esclarecimento
+- Sempre responda em JSON válido
+- Nunca explique o JSON
+- Nunca use markdown
 
-      return NextResponse.json({
-        step: "done",
-        message: "Perfeito 👍 Flyer aprovado e pronto para os próximos passos."
-      });
-    }
+Formato de resposta OBRIGATÓRIO:
 
-    // PRIMEIRA CONVERSA
-    if (session.step === "conversation") {
-      session.step = "approval";
-      session.task = {
-        type: "flyer",
-        image_prompt:
-          "Professional flyer design, dark gradient overlay, cinematic lighting, modern typography, premium marketing aesthetic"
-      };
+{
+  "intent": "create | approve | clarify | chat",
+  "response": "texto para o usuário",
+  "next_action": null | {
+    "call": "generatePrompt | generateImage | saveToDrive",
+    "payload": { }
+  }
+}
+`;
 
-      sessions.set(userId, session);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `
+Contexto atual:
+${JSON.stringify(context || {}, null, 2)}
 
-      return NextResponse.json({
-        step: "approval",
-        task: session.task,
-        message: "Criei o conceito do flyer. Posso prosseguir?"
-      });
-    }
-
-    return NextResponse.json({
-      step: session.step,
-      message: "Estou aguardando sua confirmação."
+Mensagem do usuário:
+"${message}"
+`
+        }
+      ],
+      temperature: 0.4
     });
+
+    const content = completion.choices[0].message.content;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return new Response(
+        JSON.stringify({
+          error: "Resposta inválida do assistente",
+          raw: content
+        }),
+        { status: 500 }
+      );
+    }
+
+    return new Response(JSON.stringify(parsed), { status: 200 });
+
   } catch (err) {
-    return NextResponse.json(
-      { error: "Erro no assistente", details: err.message },
+    return new Response(
+      JSON.stringify({
+        error: "Erro no assistantChat",
+        message: err.message
+      }),
       { status: 500 }
     );
   }
