@@ -17,20 +17,23 @@ export async function POST(req) {
     }
 
     const systemPrompt = `
-Você é um ORQUESTRADOR de tarefas de marketing.
+Você é um ORQUESTRADOR DE IA.
 
-Você entende português informal.
-Seu trabalho é decidir ações automaticamente.
+Objetivo:
+- Entender a intenção do usuário
+- Executar automaticamente o próximo passo
+- NÃO fazer perguntas desnecessárias
 
-REGRAS IMPORTANTES:
-- Se o usuário pedir para criar flyer → EXECUTE SEM PERGUNTAR
-- Não peça mais detalhes se o pedido já for claro
-- Sempre responda em JSON válido
-- Nunca explique nada fora do JSON
+Regras:
+- Se o usuário pedir criação de flyer → EXECUTE generatePrompt
+- Não peça mais detalhes
+- Responda sempre em JSON válido
+- Nunca use markdown
+- Nunca explique o JSON
 
-Formato OBRIGATÓRIO:
+Formato obrigatório:
 {
-  "intent": "create | chat",
+  "intent": "create | approve | chat",
   "response": "mensagem curta",
   "next_action": null | {
     "call": "generatePrompt",
@@ -48,16 +51,16 @@ Formato OBRIGATÓRIO:
       ]
     });
 
-    const raw = completion.choices[0].message.content;
+    const content = completion.choices[0].message.content;
 
     let parsed;
     try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
+      parsed = JSON.parse(content);
+    } catch {
       return new Response(
         JSON.stringify({
-          error: "Resposta inválida do modelo",
-          raw
+          error: "Resposta inválida do orquestrador",
+          raw: content
         }),
         { status: 500 }
       );
