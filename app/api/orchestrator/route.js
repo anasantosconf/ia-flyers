@@ -1,13 +1,12 @@
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { userId, message } = body;
+    const { userId, message, context } = await req.json();
 
     if (!message) {
       return new Response(
@@ -19,24 +18,25 @@ export async function POST(req) {
     const systemPrompt = `
 Você é um ORQUESTRADOR DE IA.
 
-Objetivo:
-- Entender a intenção do usuário
-- Executar automaticamente o próximo passo
-- NÃO fazer perguntas desnecessárias
+Seu papel é:
+- Entender a intenção do usuário em português informal
+- Decidir automaticamente o próximo passo
+- NÃO pedir confirmação desnecessária
+- NÃO fazer perguntas se já for possível agir
 
 Regras:
-- Se o usuário pedir criação de flyer → EXECUTE generatePrompt
-- Não peça mais detalhes
-- Responda sempre em JSON válido
-- Nunca use markdown
-- Nunca explique o JSON
+- Se o usuário pedir para criar algo visual → gerar flyer automaticamente
+- Se disser "sim", "ok", "aprovado" → continuar o fluxo
+- Sempre responder em JSON válido
+- Nunca usar markdown
+- Nunca explicar o JSON
 
 Formato obrigatório:
 {
   "intent": "create | approve | chat",
-  "response": "mensagem curta",
+  "response": "texto curto para o usuário",
   "next_action": null | {
-    "call": "generatePrompt",
+    "call": "generatePrompt | generateImage | saveToDrive",
     "payload": {}
   }
 }
@@ -47,32 +47,40 @@ Formato obrigatório:
       temperature: 0.3,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: message }
-      ]
+        {
+          role: "user",
+          content: `
+Contexto:
+${JSON.stringify(context || {}, null, 2)}
+
+Mensagem do usuário:
+"${message}"
+`,
+        },
+      ],
     });
 
-    const content = completion.choices[0].message.content;
+    const raw = completion.choices[0].message.content;
 
     let parsed;
     try {
-      parsed = JSON.parse(content);
+      parsed = JSON.parse(raw);
     } catch {
       return new Response(
         JSON.stringify({
-          error: "Resposta inválida do orquestrador",
-          raw: content
+          error: "Resposta inválida do modelo",
+          raw,
         }),
         { status: 500 }
       );
     }
 
     return new Response(JSON.stringify(parsed), { status: 200 });
-
   } catch (err) {
     return new Response(
       JSON.stringify({
         error: "Erro no orchestrator",
-        message: err.message
+        message: err.message,
       }),
       { status: 500 }
     );
