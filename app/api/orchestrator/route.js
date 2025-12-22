@@ -10,34 +10,32 @@ export async function POST(req) {
     const { userId, message, context = {} } = body;
 
     if (!message) {
-      return Response.json({ error: "Mensagem ausente" }, { status: 400 });
+      return new Response(
+        JSON.stringify({ error: "Mensagem ausente" }),
+        { status: 400 }
+      );
     }
 
     const systemPrompt = `
-Você é um ORQUESTRADOR DE AÇÕES.
-Você entende português informal.
-Seu trabalho é decidir ações automaticamente.
+Você é um ORQUESTRADOR DE TAREFAS.
+Você conversa em português informal e entende respostas curtas como:
+- "sim", "ok", "aprovado", "opção A" → aprovação
+- pedidos de criação → criação
 
-REGRAS IMPORTANTES:
-- Se o usuário pedir criação de flyer → EXECUTE automaticamente
-- Não peça detalhes óbvios
-- Use padrões inteligentes quando faltar info
-- Só peça confirmação se for publicar ou gastar dinheiro
-- Sempre responda em JSON válido
-- Nunca explique nada fora do JSON
+Seu papel:
+1. Entender a intenção do usuário
+2. Decidir a PRÓXIMA AÇÃO
+3. Sempre responder em JSON válido
+4. Nunca explique o JSON
+5. Nunca use markdown
 
-AÇÕES DISPONÍVEIS:
-- generatePrompt
-- generateImage
-- saveToDrive
-
-FORMATO OBRIGATÓRIO:
+Formato OBRIGATÓRIO:
 {
-  "intent": "create | approve | chat",
-  "response": "texto para o usuário",
+  "intent": "create | approve | chat | clarify",
+  "response": "texto curto para o usuário",
   "next_action": null | {
     "call": "generatePrompt | generateImage | saveToDrive",
-    "payload": {}
+    "payload": { }
   }
 }
 `;
@@ -65,21 +63,47 @@ Mensagem do usuário:
     let parsed;
     try {
       parsed = JSON.parse(content);
-    } catch (e) {
-      return Response.json(
-        { error: "Resposta inválida da IA", raw: content },
+    } catch {
+      return new Response(
+        JSON.stringify({
+          error: "Resposta do modelo não é JSON válido",
+          raw: content
+        }),
         { status: 500 }
       );
     }
 
-    return Response.json(parsed, { status: 200 });
+    // 🔥 EXECUÇÃO AUTOMÁTICA
+    if (parsed.next_action) {
+      const res = await fetch(
+        `${process.env.BASE_URL}/api/${parsed.next_action.call}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(parsed.next_action.payload)
+        }
+      );
+
+      const data = await res.json();
+
+      return new Response(
+        JSON.stringify({
+          ...parsed,
+          executed: parsed.next_action.call,
+          result: data
+        }),
+        { status: 200 }
+      );
+    }
+
+    return new Response(JSON.stringify(parsed), { status: 200 });
 
   } catch (err) {
-    return Response.json(
-      {
-        error: "Erro no orquestrador",
+    return new Response(
+      JSON.stringify({
+        error: "Erro no orchestrator",
         message: err.message
-      },
+      }),
       { status: 500 }
     );
   }
