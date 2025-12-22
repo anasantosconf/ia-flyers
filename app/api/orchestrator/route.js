@@ -4,20 +4,10 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-async function callInternalAPI(route, payload) {
-  const res = await fetch(`${process.env.BASE_URL}/api/${route}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  return res.json();
-}
-
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { userId, message, context = {} } = body;
+    const { userId, message } = body;
 
     if (!message) {
       return new Response(
@@ -27,68 +17,53 @@ export async function POST(req) {
     }
 
     const systemPrompt = `
-Você é um assistente pessoal inteligente e orquestrador de tarefas.
+Você é um ORQUESTRADOR de tarefas de marketing.
+
 Você entende português informal.
-Você decide a INTENÇÃO do usuário e o PRÓXIMO PASSO.
+Seu trabalho é decidir ações automaticamente.
 
-Intenções possíveis:
-- create (criar algo)
-- approve (aprovar algo)
-- chat (conversa)
-- clarify (pedir mais informações)
+REGRAS IMPORTANTES:
+- Se o usuário pedir para criar flyer → EXECUTE SEM PERGUNTAR
+- Não peça mais detalhes se o pedido já for claro
+- Sempre responda em JSON válido
+- Nunca explique nada fora do JSON
 
-Formato OBRIGATÓRIO da resposta (JSON válido):
+Formato OBRIGATÓRIO:
 {
-  "intent": "create | approve | chat | clarify",
-  "response": "texto para o usuário",
+  "intent": "create | chat",
+  "response": "mensagem curta",
   "next_action": null | {
-    "call": "generatePrompt | generateImage | saveToDrive",
-    "payload": { }
+    "call": "generatePrompt",
+    "payload": {}
   }
 }
-Nunca explique o JSON.
-Nunca use markdown.
 `;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
-      temperature: 0.4,
+      temperature: 0.3,
       messages: [
         { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `
-Contexto atual:
-${JSON.stringify(context, null, 2)}
-
-Mensagem do usuário:
-"${message}"
-`
-        }
+        { role: "user", content: message }
       ]
     });
 
     const raw = completion.choices[0].message.content;
-    const parsed = JSON.parse(raw);
 
-    // 🔁 EXECUÇÃO AUTOMÁTICA
-    let executionResult = null;
-
-    if (parsed.next_action) {
-      executionResult = await callInternalAPI(
-        parsed.next_action.call,
-        parsed.next_action.payload
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      return new Response(
+        JSON.stringify({
+          error: "Resposta inválida do modelo",
+          raw
+        }),
+        { status: 500 }
       );
     }
 
-    return new Response(
-      JSON.stringify({
-        ...parsed,
-        executed: parsed.next_action?.call || null,
-        result: executionResult
-      }),
-      { status: 200 }
-    );
+    return new Response(JSON.stringify(parsed), { status: 200 });
 
   } catch (err) {
     return new Response(
