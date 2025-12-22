@@ -4,6 +4,16 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+async function callInternalAPI(route, payload) {
+  const res = await fetch(`${process.env.BASE_URL}/api/${route}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  return res.json();
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -17,32 +27,32 @@ export async function POST(req) {
     }
 
     const systemPrompt = `
-Você é um ORQUESTRADOR DE TAREFAS.
-Você conversa em português informal e entende respostas curtas como:
-- "sim", "ok", "aprovado", "opção A" → aprovação
-- pedidos de criação → criação
+Você é um assistente pessoal inteligente e orquestrador de tarefas.
+Você entende português informal.
+Você decide a INTENÇÃO do usuário e o PRÓXIMO PASSO.
 
-Seu papel:
-1. Entender a intenção do usuário
-2. Decidir a PRÓXIMA AÇÃO
-3. Sempre responder em JSON válido
-4. Nunca explique o JSON
-5. Nunca use markdown
+Intenções possíveis:
+- create (criar algo)
+- approve (aprovar algo)
+- chat (conversa)
+- clarify (pedir mais informações)
 
-Formato OBRIGATÓRIO:
+Formato OBRIGATÓRIO da resposta (JSON válido):
 {
   "intent": "create | approve | chat | clarify",
-  "response": "texto curto para o usuário",
+  "response": "texto para o usuário",
   "next_action": null | {
     "call": "generatePrompt | generateImage | saveToDrive",
     "payload": { }
   }
 }
+Nunca explique o JSON.
+Nunca use markdown.
 `;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
-      temperature: 0.3,
+      temperature: 0.4,
       messages: [
         { role: "system", content: systemPrompt },
         {
@@ -58,45 +68,27 @@ Mensagem do usuário:
       ]
     });
 
-    const content = completion.choices[0].message.content;
+    const raw = completion.choices[0].message.content;
+    const parsed = JSON.parse(raw);
 
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return new Response(
-        JSON.stringify({
-          error: "Resposta do modelo não é JSON válido",
-          raw: content
-        }),
-        { status: 500 }
-      );
-    }
+    // 🔁 EXECUÇÃO AUTOMÁTICA
+    let executionResult = null;
 
-    // 🔥 EXECUÇÃO AUTOMÁTICA
     if (parsed.next_action) {
-      const res = await fetch(
-        `${process.env.BASE_URL}/api/${parsed.next_action.call}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsed.next_action.payload)
-        }
-      );
-
-      const data = await res.json();
-
-      return new Response(
-        JSON.stringify({
-          ...parsed,
-          executed: parsed.next_action.call,
-          result: data
-        }),
-        { status: 200 }
+      executionResult = await callInternalAPI(
+        parsed.next_action.call,
+        parsed.next_action.payload
       );
     }
 
-    return new Response(JSON.stringify(parsed), { status: 200 });
+    return new Response(
+      JSON.stringify({
+        ...parsed,
+        executed: parsed.next_action?.call || null,
+        result: executionResult
+      }),
+      { status: 200 }
+    );
 
   } catch (err) {
     return new Response(
