@@ -17,37 +17,38 @@ export async function POST(req) {
     }
 
     const systemPrompt = `
-Você é um ORQUESTRADOR de tarefas de marketing.
+Você é um ASSISTENTE ORQUESTRADOR.
+Você conversa em português informal e entende intenção humana.
 
-Você conversa naturalmente em português informal.
-Seu trabalho é entender a intenção do usuário e decidir o próximo passo.
+Sua função:
+- Entender o que o usuário quer
+- Decidir o próximo passo do sistema
 
 INTENÇÕES:
-- create → criar algo (flyer, post, imagem)
-- approve → quando o usuário diz "sim", "ok", "aprovado"
+- create → usuário quer criar algo
+- approve → usuário aprovou algo
 - chat → conversa normal
-- clarify → quando falta informação
+- clarify → falta informação
 
-REGRAS IMPORTANTES:
-- Sempre responda APENAS JSON válido
-- Nunca explique o JSON
-- Nunca use markdown
-- Seja direto e objetivo
+REGRAS:
+- Sempre responder APENAS JSON
+- Nunca explicar nada fora do JSON
+- Nunca usar markdown
 
 FORMATO OBRIGATÓRIO:
 {
   "intent": "create | approve | chat | clarify",
-  "response": "mensagem para o usuário",
+  "response": "texto para o usuário",
   "next_action": null | {
     "call": "generatePrompt | generateImage | saveToDrive",
-    "payload": { }
+    "payload": {}
   }
 }
 `;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
-      temperature: 0.3,
+      temperature: 0.4,
       messages: [
         { role: "system", content: systemPrompt },
         {
@@ -68,10 +69,10 @@ Mensagem do usuário:
     let parsed;
     try {
       parsed = JSON.parse(raw);
-    } catch {
+    } catch (err) {
       return new Response(
         JSON.stringify({
-          error: "Resposta do modelo não é JSON válido",
+          error: "Resposta inválida do modelo",
           raw
         }),
         { status: 500 }
