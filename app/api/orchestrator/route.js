@@ -7,30 +7,33 @@ const openai = new OpenAI({
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { userId, message, context } = body;
+    const { userId, message, context = {} } = body;
 
     if (!message) {
-      return new Response(
-        JSON.stringify({ error: "Mensagem ausente" }),
-        { status: 400 }
-      );
+      return Response.json({ error: "Mensagem ausente" }, { status: 400 });
     }
 
     const systemPrompt = `
-Você é um assistente pessoal inteligente, conversacional e proativo.
+Você é um ORQUESTRADOR DE AÇÕES.
 Você entende português informal.
-Seu papel é identificar a intenção do usuário e decidir o próximo passo.
+Seu trabalho é decidir ações automaticamente.
 
-Regras:
-- Se o usuário disser "sim", "ok", "pode", "aprovado" → intent = approve
-- Se pedir criação → intent = create
-- Se estiver confuso → intent = clarify
-- Conversa normal → intent = chat
+REGRAS IMPORTANTES:
+- Se o usuário pedir criação de flyer → EXECUTE automaticamente
+- Não peça detalhes óbvios
+- Use padrões inteligentes quando faltar info
+- Só peça confirmação se for publicar ou gastar dinheiro
+- Sempre responda em JSON válido
+- Nunca explique nada fora do JSON
 
-Sempre responda APENAS JSON válido neste formato:
+AÇÕES DISPONÍVEIS:
+- generatePrompt
+- generateImage
+- saveToDrive
 
+FORMATO OBRIGATÓRIO:
 {
-  "intent": "create | approve | clarify | chat",
+  "intent": "create | approve | chat",
   "response": "texto para o usuário",
   "next_action": null | {
     "call": "generatePrompt | generateImage | saveToDrive",
@@ -41,20 +44,20 @@ Sempre responda APENAS JSON válido neste formato:
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
+      temperature: 0.3,
       messages: [
         { role: "system", content: systemPrompt },
         {
           role: "user",
           content: `
 Contexto atual:
-${JSON.stringify(context || {}, null, 2)}
+${JSON.stringify(context, null, 2)}
 
 Mensagem do usuário:
 "${message}"
 `
         }
-      ],
-      temperature: 0.4
+      ]
     });
 
     const content = completion.choices[0].message.content;
@@ -62,24 +65,21 @@ Mensagem do usuário:
     let parsed;
     try {
       parsed = JSON.parse(content);
-    } catch {
-      return new Response(
-        JSON.stringify({
-          error: "Resposta inválida do modelo",
-          raw: content
-        }),
+    } catch (e) {
+      return Response.json(
+        { error: "Resposta inválida da IA", raw: content },
         { status: 500 }
       );
     }
 
-    return new Response(JSON.stringify(parsed), { status: 200 });
+    return Response.json(parsed, { status: 200 });
 
   } catch (err) {
-    return new Response(
-      JSON.stringify({
-        error: "Erro no orchestrator",
+    return Response.json(
+      {
+        error: "Erro no orquestrador",
         message: err.message
-      }),
+      },
       { status: 500 }
     );
   }
