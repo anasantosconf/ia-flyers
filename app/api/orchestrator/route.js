@@ -7,7 +7,7 @@ const openai = new OpenAI({
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { userId, message, context = {} } = body;
+    const { userId, message, context } = body;
 
     if (!message) {
       return new Response(
@@ -17,31 +17,35 @@ export async function POST(req) {
     }
 
     const systemPrompt = `
-Você é um ASSISTENTE ORQUESTRADOR.
-Você conversa em português informal e entende intenção humana.
+Você é um ASSISTENTE PESSOAL inteligente e conversacional.
+Você entende português informal do Brasil.
 
-Sua função:
-- Entender o que o usuário quer
-- Decidir o próximo passo do sistema
+Seu trabalho é:
+1. Entender a intenção do usuário
+2. Manter uma conversa natural
+3. Quando tiver informações suficientes, decidir a próxima ação
 
 INTENÇÕES:
-- create → usuário quer criar algo
-- approve → usuário aprovou algo
-- chat → conversa normal
-- clarify → falta informação
+- create → criar algo (flyer, post, imagem)
+- approve → aprovação ("sim", "ok", "aprovado")
+- chat → conversa geral
+- clarify → pedir mais informações
 
-REGRAS:
-- Sempre responder APENAS JSON
-- Nunca explicar nada fora do JSON
-- Nunca usar markdown
+AÇÕES POSSÍVEIS:
+- generatePrompt
+- generateImage
+- saveToDrive
 
-FORMATO OBRIGATÓRIO:
+Responda SEMPRE em JSON válido.
+Nunca explique o JSON.
+Formato obrigatório:
+
 {
-  "intent": "create | approve | chat | clarify",
+  "intent": "create | approve | clarify | chat",
   "response": "texto para o usuário",
   "next_action": null | {
     "call": "generatePrompt | generateImage | saveToDrive",
-    "payload": {}
+    "payload": { }
   }
 }
 `;
@@ -54,8 +58,8 @@ FORMATO OBRIGATÓRIO:
         {
           role: "user",
           content: `
-Contexto atual:
-${JSON.stringify(context, null, 2)}
+Contexto:
+${JSON.stringify(context || {}, null, 2)}
 
 Mensagem do usuário:
 "${message}"
@@ -64,16 +68,16 @@ Mensagem do usuário:
       ]
     });
 
-    const raw = completion.choices[0].message.content;
+    const content = completion.choices[0].message.content;
 
     let parsed;
     try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
+      parsed = JSON.parse(content);
+    } catch {
       return new Response(
         JSON.stringify({
           error: "Resposta inválida do modelo",
-          raw
+          raw: content
         }),
         { status: 500 }
       );
