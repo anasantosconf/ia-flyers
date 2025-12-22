@@ -17,55 +17,44 @@ export async function POST(req) {
     }
 
     const systemPrompt = `
-Você é um ASSISTENTE PESSOAL inteligente e conversacional.
-Você entende português informal do Brasil.
+Você é um assistente pessoal inteligente, conversacional e proativo.
+Você entende português informal.
+Seu papel é identificar a intenção do usuário e decidir o próximo passo.
 
-Seu trabalho é:
-1. Entender a intenção do usuário
-2. Manter uma conversa natural
-3. Quando tiver informações suficientes, decidir a próxima ação
+Regras:
+- Se o usuário disser "sim", "ok", "pode", "aprovado" → intent = approve
+- Se pedir criação → intent = create
+- Se estiver confuso → intent = clarify
+- Conversa normal → intent = chat
 
-INTENÇÕES:
-- create → criar algo (flyer, post, imagem)
-- approve → aprovação ("sim", "ok", "aprovado")
-- chat → conversa geral
-- clarify → pedir mais informações
-
-AÇÕES POSSÍVEIS:
-- generatePrompt
-- generateImage
-- saveToDrive
-
-Responda SEMPRE em JSON válido.
-Nunca explique o JSON.
-Formato obrigatório:
+Sempre responda APENAS JSON válido neste formato:
 
 {
   "intent": "create | approve | clarify | chat",
   "response": "texto para o usuário",
   "next_action": null | {
     "call": "generatePrompt | generateImage | saveToDrive",
-    "payload": { }
+    "payload": {}
   }
 }
 `;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
-      temperature: 0.4,
       messages: [
         { role: "system", content: systemPrompt },
         {
           role: "user",
           content: `
-Contexto:
+Contexto atual:
 ${JSON.stringify(context || {}, null, 2)}
 
 Mensagem do usuário:
 "${message}"
 `
         }
-      ]
+      ],
+      temperature: 0.4
     });
 
     const content = completion.choices[0].message.content;
