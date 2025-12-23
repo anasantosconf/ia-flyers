@@ -1,39 +1,45 @@
-import { google } from "googleapis";
-import fs from "fs";
-import dotenv from "dotenv";
+import 'dotenv/config'; // lê o .env automaticamente
+import { google } from 'googleapis';
+import fs from 'fs';
 
-dotenv.config();
+const privateKey = process.env.GOOGLE_PRIVATE_KEY
+  ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
+  : null;
 
-const folderId = process.env.DRIVE_FOLDER_ID;
-
-const auth = new google.auth.GoogleAuth({
-  keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-  scopes: ["https://www.googleapis.com/auth/drive.readonly"],
-});
-
-const drive = google.drive({ version: "v3", auth });
-
-async function gerarJSONLogos() {
-  if (!folderId) {
-    throw new Error("DRIVE_FOLDER_ID não definido");
-  }
-
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: "files(id, name, mimeType, webViewLink)",
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  });
-
-  const logos = res.data.files.map(file => ({
-    id: file.id,
-    nome: file.name,
-    tipo: file.mimeType,
-    link: file.webViewLink
-  }));
-
-  fs.writeFileSync("logos.json", JSON.stringify(logos, null, 2));
-  console.log("logos.json gerado com sucesso");
+if (!process.env.GOOGLE_CLIENT_EMAIL || !privateKey || !process.env.DRIVE_FOLDER_ID) {
+  console.error('Erro: alguma variável do .env não foi definida corretamente.');
+  process.exit(1);
 }
 
-gerarJSONLogos().catch(console.error);
+const auth = new google.auth.JWT({
+  email: process.env.GOOGLE_CLIENT_EMAIL,
+  key: privateKey,
+  scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+});
+
+const drive = google.drive({ version: 'v3', auth });
+
+async function gerarJSONLogos() {
+  try {
+    const res = await drive.files.list({
+      q: `'${process.env.DRIVE_FOLDER_ID}' in parents and trashed = false`,
+      fields: 'files(id, name, mimeType, webViewLink)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    const arquivos = res.data.files.map(f => ({
+      id: f.id,
+      nome: f.name,
+      tipo: f.mimeType,
+      link: f.webViewLink,
+    }));
+
+    fs.writeFileSync('logos.json', JSON.stringify(arquivos, null, 2));
+    console.log('Arquivo logos.json gerado com sucesso!');
+  } catch (err) {
+    console.error('Erro ao gerar JSON:', err);
+  }
+}
+
+gerarJSONLogos();

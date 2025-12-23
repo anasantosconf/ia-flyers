@@ -1,11 +1,21 @@
 {
   "name": "ia-flyers",
   "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "googleapis": "^169.0.0",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
   "description": "This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/anasantosconf/ia-flyers.git"
@@ -17,9 +27,5 @@
   "bugs": {
     "url": "https://github.com/anasantosconf/ia-flyers/issues"
   },
-  "homepage": "https://github.com/anasantosconf/ia-flyers#readme",
-  "dependencies": {
-    "dotenv": "^17.2.3",
-    "googleapis": "^169.0.0"
-  }
+  "homepage": "https://github.com/anasantosconf/ia-flyers#readme"
 }
