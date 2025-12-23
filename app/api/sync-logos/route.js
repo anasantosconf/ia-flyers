@@ -5,19 +5,32 @@ import path from "path";
 
 export async function POST() {
   try {
+    // 🔐 Variáveis de ambiente
+    const CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+    const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
+    const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
+
+    if (!CLIENT_EMAIL || !PRIVATE_KEY || !DRIVE_FOLDER_ID) {
+      return new Response(
+        JSON.stringify({
+          error: "Variáveis de ambiente não definidas",
+        }),
+        { status: 500 }
+      );
+    }
+
+    // 🔑 Autenticação Google
     const auth = new google.auth.JWT({
-      email: process.env.GOOGLE_CLIENT_EMAIL,
-      key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+      email: CLIENT_EMAIL,
+      key: PRIVATE_KEY.replace(/\\n/g, "\n"),
       scopes: ["https://www.googleapis.com/auth/drive.readonly"],
     });
 
     const drive = google.drive({ version: "v3", auth });
 
-    const ROOT_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
-
-    // 1. Buscar subpastas (seguros, financeiro, etc)
+    // 📁 Busca subpastas dentro da pasta LOGOS
     const foldersRes = await drive.files.list({
-      q: `'${ROOT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      q: `'${DRIVE_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: "files(id, name)",
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
@@ -25,7 +38,6 @@ export async function POST() {
 
     const logos = {};
 
-    // 2. Para cada pasta, buscar os arquivos
     for (const folder of foldersRes.data.files) {
       const filesRes = await drive.files.list({
         q: `'${folder.id}' in parents and trashed=false`,
@@ -37,19 +49,24 @@ export async function POST() {
       logos[folder.name] = filesRes.data.files;
     }
 
-    // 3. Salvar JSON local
-    const filePath = path.join(process.cwd(), "logos.json");
-    fs.writeFileSync(filePath, JSON.stringify(logos, null, 2));
+    // 💾 Salva JSON local (opcional, mas útil)
+    const outputPath = path.join(process.cwd(), "logos.json");
+    fs.writeFileSync(outputPath, JSON.stringify(logos, null, 2));
 
-    return Response.json({
-      ok: true,
-      message: "Logos sincronizadas com sucesso",
-      folders: Object.keys(logos),
-    });
-
-  } catch (err) {
-    return Response.json(
-      { ok: false, error: err.message },
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        logos,
+      }),
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error(error);
+    return new Response(
+      JSON.stringify({
+        error: "Erro ao sincronizar logos",
+        message: error.message,
+      }),
       { status: 500 }
     );
   }
