@@ -44,3 +44,4 @@ next-env.d.ts
 *.json
 .env
 .env.local
+next.config.mjs
